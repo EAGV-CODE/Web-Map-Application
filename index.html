@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+    	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		<title>Web Map</title>
+		
+		<!-- Bootstrap css-->
+    	<link href="resources/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+		<link href="resources/leaflet/leaflet.css" rel="stylesheet">
+
+    	<script src="resources/jquery/js/jquery-3.4.1.js"></script>
+ 		<script src="resources/bootstrap/js/bootstrap.min.js"></script>
+ 		<script src="resources/leaflet/leaflet.js"></script>
+ 		<script src="resources/leaflet/leaflet.ajax.js"></script>
+ 		<script src="resources/turf/turf.js"></script>
+
+
+	<style>
+		#header {
+			height: 75px;
+			background-color: darkgoldenrod;
+		}
+
+		#mapdiv{
+			height: 850px;
+			background-color: salmon;
+		}
+
+		#side_panel {
+			height: 850px;
+			background-color: beige;
+		}
+
+		#footer {
+			height: 75px;
+			background-color: darkgrey;
+		}
+
+		.attraction {
+			margin-bottom: 5px;
+		}
+		
+		#filter {
+			margin-bottom: 5px;
+		}
+
+		/* The modal (background) */
+		.modal {
+			z-index: 10000;  /* Sit on top */
+			width: 100%;  /* Full width */
+			height: 100%;  /* Full height */
+			display:none; /* hidden by default */
+			background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+		}
+
+		/* Modal Content */
+		.modal-content {
+			padding: 20px;
+			background-color: tan;
+			margin-top: 10%;
+		}
+	</style>
+
+	</head>
+	<body>
+		<div id=" header" class="col-md-12">
+			<h1 class="text-center">Mexico City</h1>
+		</div>
+		
+		<div id="side_panel" class="col-md-3">
+			<h1 class="text-center">Attractions</h1>
+			<select  id="filter" class= "form-control">
+				<option value='All'>All Attractions</option>
+				<option value='Park'>Park</option>
+				<option value='Museum'>Museum</option>
+				<option value='Place'>Place</option>
+				<option value='Neighborhood'>Neighborhood</option>
+				<option value='Pueblo Magico'>Pueblo Magico</option>
+			</select>
+			<div id="zoomButtons"></div>
+		</div>
+
+		<div id="mapdiv" class="col-md-9"></div>
+		<div id="footer" class="col-md-12">
+			<h4 id="map_coords" class="text-center"></h4>
+			<h4 class="text-center">&copy;2016 <a href="http://antartic.com"> Antartic </a></h4>
+		</div>
+
+			<!-- the Window Modal -->
+
+		<div id="dlgAttraction" class="modal">
+			<div id="form" class="modal-content col-md-7 col-md-offset-4">
+				<div class="form-group row">
+					<div class="col-sm-10">
+						<input type="text" class="form-control" id="name" placeholder="Attraction Name">
+					</div>
+					<div class="col-sm-2">
+						<span id="idDisplay" class="pull-right"></span>
+					</div>
+				</div>
+
+				<div class="form-group row">
+					<div class="col-sm-6">
+						<input type="text" class="form-control" id="latitude">
+					</div>
+					<div class="col-sm-6">
+						<input type="text" class="form-control" id="longitude">
+					</div>
+				</div>
+				<div class="form-group row">
+					<div class="col-sm-6">
+						<select id="category" class="form-control">
+							<option value="Park" selected>Park</option>
+							<option value="Museum">Museum</option>
+							<option value="Place">Place</option>
+							<option value="Neighborhood">Neighborhood</option>
+							<option value="Pueblo Magico">Pueblo Magico</option>
+						</select>
+					</div>
+					<div class="col-sm-6">
+						<input type="text" class="form-control" id="image" placeholder="Image File">
+					</div>
+				</div>
+				<div class="form-group row">
+					<div class="col-sm-12">
+						<input type="text" class="form-control" id="website" placeholder="Web URL">
+					</div>
+				</div>
+				<div id="addButtons">
+					<button id="btnClosest" class="btn btn-warning">Closest 5</button>
+					<button id="btnSave" class="btn btn-success">Save</button>
+					<button  class="btn btn-danger btnCancel">Cancel</button>
+				</div>
+				<div id="editButtons">
+					<button id="btnUpdate" class="btn btn-success">Update</button>
+					<button id="btnDelete" class="btn btn-warning">Delete</button>
+					<button  class="btn btn-danger btnCancel">Cancel</button>
+				</div>
+			</div>
+
+			<div id="table" class="modal-content col-md-7 col-md-offset-4">
+				<div id="tableData"></div>
+				<button class="btn btn-danger btnCancel">Close</button>
+			</div>
+		</div>
+		
+		
+
+
+		
+		<script type="text/javascript">
+			var mymap = L.map('mapdiv')
+			mymap.setView([19.4, -99.1], 11);
+
+			var backgroundLayer = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png');
+			mymap.addLayer(backgroundLayer);
+
+			// adding geojson data from database=================================================
+			var attractionsLayer;
+			refreshAttractions();
+
+			//===================================================================================
+
+			mymap.on('mousemove', function(e) {
+				var str = "Latitude: "+e.latlng.lat.toFixed(5)+" Longitude: " 
+				+e.latlng.lng.toFixed(5)+" Zoom Level: "+mymap.getZoom();
+				$("#map_coords").html(str);
+			});
+
+			mymap.on("click", function(e) {
+				$("#dlgAttraction").show();
+				$("#form").show();
+				$("#table").hide();
+				$("#addButtons").show();
+				$("#editButtons").hide();
+
+				$("#latitude").val(e.latlng.lat.toFixed(5));
+				$("#longitude").val(e.latlng.lng.toFixed(5));
+				$("#idDisplay").html("New");				
+				$("#name").val("");
+				$("#website").val("");
+				$("#image").val("");
+
+			});
+
+			function editAttraction(id) {
+				$("#dlgAttraction").show();
+				$("#table").hide();
+				$("#addButtons").hide();
+				$("#editButtons").show();
+
+				$.ajax({
+					url:'find_attraction.php',
+					type:'POST',
+					data:{id:id},
+					success:function(response) {
+						objAttraction=JSON.parse(response);
+						$("#idDisplay").html(objAttraction.id);
+						$("#name").val(objAttraction.name);
+						$("#latitude").val(objAttraction.latitude);
+						$("#longitude").val(objAttraction.longitude);
+						$("#category").val(objAttraction.category);
+						$("#website").val(objAttraction.web);
+						$("#image").val(objAttraction.image);
+					}
+				});
+			}
+
+			$("#btnUpdate").click(function() {
+				$.ajax({
+					url:'update_attraction.php',
+					type:'POST',
+					data:{
+						id:$("#idDisplay").html(),
+						name:$("#name").val(),
+						image:$("#image").val(),
+						web:$("#website").val(),
+						category:$("#category").val(),
+						latitude:$("#latitude").val(),
+						longitude:$("#longitude").val()
+					},
+					success:function(response) {
+						alert(response);
+						$("#dlgAttraction").hide();
+						refreshAttractions();
+					}
+				});
+			});
+
+			$("#btnDelete").click(function() {
+				if (confirm("Are you sure you want to delete this attraction?")) {
+					$.ajax({
+						url:'delete_attraction.php',
+						type:'POST',
+						data:{
+							id:$("#idDisplay").html(),
+						},
+						success:function(response){
+							alert(response);
+							$("#dlgAttraction").hide();
+							refreshAttractions();
+						}
+					});
+				}
+			});
+
+
+			$(".btnCancel").click(function() {
+				$("#dlgAttraction").hide();
+			});
+
+			$("#btnSave").click(function(e){
+				$.ajax({
+					url:'add_attraction.php',
+					type:'POST',
+					data:{
+						name:$("#name").val(),
+						image:$("#image").val(),
+						web:$("#website").val(),
+						category:$("#category").val(),
+						latitude:$("#latitude").val(),
+						longitude:$("#longitude").val()
+					},
+					success:function(response){
+						alert(response);
+						$("#dlgAttraction").hide();
+						refreshAttractions();
+					}
+				});
+			});
+
+			function refreshAttractions() {
+				$.ajax({
+					url:'load_attractions.php', 
+					data:{filter:$("#filter").val()},
+					success:function(response){
+						if (attractionsLayer) {
+							mymap.removeLayer(attractionsLayer);
+							$("#zoomButtons").html("");
+						};
+						attractionsLayer= L.geoJson(JSON.parse(response), {pointToLayer: function(feature, latlng) {
+							var strButton = "<button id='zoomTo"+feature.properties.name.replace(/ /g,'');
+							strButton += "' class='form-control btn btn-primary attraction'>";
+							strButton += feature.properties.name+"</button>";
+							$("#zoomButtons").append(strButton);
+
+							$("#zoomTo"+feature.properties.name.replace(/ /g,'')).click(function() {
+								mymap.setView([latlng.lat, latlng.lng], 17);
+							});
+
+							var strPopup = "<h3>"+feature.properties.name+"</h3>";
+							strPopup += "<h5>Category: "+feature.properties.category+"</h5>";
+							strPopup += "<a href='"+feature.properties.web+"' target='blank'>";
+							strPopup += "<img src='img/"+feature.properties.image+"' width='200px'>";
+							strPopup += "</a><br><button id='btnEdit' class='btn btn-primary center-block' onclick='editAttraction("+feature.properties.id+")'>Edit</button>";
+							return L.marker(latlng).bindPopup(strPopup);
+						}});
+						mymap.addLayer(attractionsLayer);
+						//attractionsLayer.addTo(mymap);      both ways are right!!!
+						mymap.fitBounds(attractionsLayer.getBounds());
+
+				}});
+			}
+
+			$("#filter").change(function() {
+				refreshAttractions();
+			});
+
+			$("#btnClosest").click(function() {
+				$.ajax({
+					url:'closest_attractions.php',
+					type:'POST',
+					data:{
+						latitude:$("#latitude").val(),
+						longitude:$("#longitude").val()
+					},
+					success:function(response){
+						$("#form").hide();
+						$("#table").show();
+						$("#tableData").html(response);
+					}
+				});
+			});
+
+		</script>
+	</body>
+</html>
